@@ -137,7 +137,7 @@ yarn_node_modules() {
 
   echo "Installing node modules (yarn.lock)"
   cd "$build_dir" || return
-  monitor "yarn-install" yarn install --production="$production" --frozen-lockfile --ignore-engines 2>&1
+  monitor "yarn-install" yarn install --production="$production" --frozen-lockfile --ignore-engines --prefer-offline 2>&1
 }
 
 yarn_2_install() {
@@ -166,7 +166,7 @@ yarn_2_install() {
 yarn_prune_devdependencies() {
   local build_dir=${1:-}
   local cache_dir=${2:-}
-  local workspace_plugin_path
+  local buildpack_dir=${3:-}
 
   if [ "$NODE_ENV" == "test" ]; then
     echo "Skipping because NODE_ENV is 'test'"
@@ -196,15 +196,36 @@ yarn_prune_devdependencies() {
         monitor "yarn-prune" yarn workspaces focus --all --production
       fi
 
-      meta_set "skipped-prune" "false"
+      if [ "$YARN2_SKIP_PRUNING" == "true" ]; then
+        echo "Skipping because YARN2_SKIP_PRUNING is '$YARN2_SKIP_PRUNING'"
+        meta_set "skipped-prune" "true"
+        return 0
+      else
+        meta_set "skipped-prune" "false"
+      fi
     else
       meta_set "workspace-plugin-present" "false"
       echo "Skipping because the Yarn workspace plugin is not present. Add the plugin to your source code with 'yarn plugin import workspace-tools'."
     fi
+    cd "$build_dir" || return
+    echo "Running 'yarn heroku prune'"
+    export YARN_PLUGINS="${buildpack_dir}/yarn2-plugins/prune-dev-dependencies/bundles/@yarnpkg/plugin-prune-dev-dependencies.js"
+    monitor "yarn-prune" yarn heroku prune
+    meta_set "skipped-prune" "false"
   else
     cd "$build_dir" || return
     monitor "yarn-prune" yarn install --frozen-lockfile --ignore-engines --ignore-scripts --prefer-offline 2>&1
     meta_set "skipped-prune" "false"
+  fi
+}
+
+has_npm_lock() {
+  local build_dir=${1:-}
+
+  if [[ -f "$build_dir/package-lock.json" ]] || [[ -f "$build_dir/npm-shrinkwrap.json" ]]; then
+    echo "true"
+  else
+    echo "false"
   fi
 }
 
@@ -220,7 +241,7 @@ should_use_npm_ci() {
 
   # We should only run `npm ci` if all of the manifest files are there, and we are running at least npm 6.x
   # `npm ci` was introduced in the 5.x line in 5.7.0, but this sees very little usage, < 5% of builds
-  if [[ -f "$build_dir/package.json" ]] && [[ -f "$build_dir/package-lock.json" ]] && (( major >= 6 )); then
+  if [[ -f "$build_dir/package.json" ]] && [[ "$(has_npm_lock "$build_dir")" == "true" ]] && (( major >= 6 )); then
     echo "true"
   else
     echo "false"
@@ -234,7 +255,7 @@ npm_node_modules() {
   if [ -e "$build_dir/package.json" ]; then
     cd "$build_dir" || return
 
-    if [[ "$(should_use_npm_ci "$build_dir")" == "true" ]] && [[ "$USE_NPM_INSTALL" != "true" ]]; then
+    if [[ "$USE_NPM_INSTALL" == "false" ]]; then
       meta_set "use-npm-ci" "true"
       echo "Installing node modules"
       monitor "npm-install" npm ci --production="$production" --unsafe-perm --userconfig "$build_dir/.npmrc" 2>&1

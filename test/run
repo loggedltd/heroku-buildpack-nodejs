@@ -25,6 +25,30 @@ testNpmCi() {
   assertCapturedSuccess
 }
 
+testNpmCiShrinkwrap() {
+  local log_file cache
+  log_file=$(mktemp)
+  cache=$(mktmpdir)
+
+  BUILDPACK_LOG_FILE="$log_file" compile "node-10-npm-ci-shrinkwrap" "$cache"
+
+   # make sure that build scripts are being called
+  assertCaptured "heroku-prebuild script"
+  assertCaptured "build script"
+  assertCaptured "postinstall script"
+  assertCapturedSuccess
+
+   # test logging
+  assertFileContains "use-npm-ci=true" "$log_file"
+  assertFileContains "npm-install-time=" "$log_file"
+  assertFileContains "npm-install-memory=" "$log_file"
+
+   # test re-using the cache
+  echo "" > "$log_file"
+  BUILDPACK_LOG_FILE="$log_file" compile "node-10-npm-ci-shrinkwrap" "$cache"
+  assertCapturedSuccess
+}
+
 testNpmCiFallback() {
   local log_file cache
   log_file=$(mktemp)
@@ -157,8 +181,8 @@ testYarnRun() {
 testNoVersion() {
   compile "no-version"
   assertCaptured "engines.node (package.json):  unspecified"
-  assertCaptured "Resolving node version 14.x"
-  assertCaptured "Downloading and installing node 14."
+  assertCaptured "Resolving node version 16.x"
+  assertCaptured "Downloading and installing node 16."
   assertCapturedSuccess
 }
 
@@ -229,23 +253,13 @@ testYarn() {
   assertCapturedSuccess
 }
 
-testYarnCacheDirectory() {
+testYarnCache() {
   local cache=$(mktmpdir)
-  local env_dir=$(mktmpdir)
-  local cache_dir=$(mktmpdir)
-  echo "${cache_dir}/yarn"> "$env_dir/YARN_CACHE_FOLDER"
-  compile "yarn" $cache $env_dir
-  # These will be created if yarn is using the directory for its cache
 
-  assertDirectoryExists ${cache_dir}/yarn
-  # yarn frequently bumps the version number used in its cache
-  # so use a wildcard here to prevent frequent CI failures
-
-  # assert that the above ls command exited successfully, which only happens if the file exists
-  assertEquals "0" "$?"
+  compile "yarn" $cache
 
   # assert that devDependencies are cached
-  assertEquals "1" "$(ls -1 $cache/node/cache/node_modules | grep -c debug | tr -d ' ')"
+  assertEquals "1" "$(ls -1 $cache/node/cache/yarn/v6 | grep -c debug | tr -d ' ')"
 
   assertCapturedSuccess
 }
@@ -259,20 +273,6 @@ testYarnNativeCache() {
   # Run this again with a cache
   compile "yarn-native-cache" $cache
 
-  assertCapturedSuccess
-}
-
-testYarnNativeCacheFalse() {
-  local cache=$(mktmpdir)
-
-  compile "yarn-native-cache-false" $cache
-  # These will be created if yarn is using the directory for its cache
-
-  # Run this again with a cache
-  compile "yarn-native-cache-false" $cache
-
-  # assert that devDependencies are not cached
-  assertEquals "1" "$(ls -1 $cache/node/cache/node_modules | grep -c debug | tr -d ' ')"
   assertCapturedSuccess
 }
 
@@ -676,12 +676,44 @@ testIoJs() {
 # Yarn 2
 testYarn2() {
   compile "yarn-2"
-  assertCaptured "The buildpack won't cache the dependencies in .yarn/cache."
   assertCaptured "Running 'yarn install' with yarn.lock"
   assertCaptured "Version 3.9.7" # tsc output
-  assertCaptured "Running 'yarn workspaces focus --all --production'"
+  assertCaptured "Running 'yarn heroku prune'"
+  assertCaptured "debug-npm-4.3.2-f0148b6afe-5543570879.zip appears to be unused - removing"
+  assertCaptured "ms-npm-2.1.2-ec0c1512ff-9b65fb709b.zip appears to be unused - removing"
   assertCapturedSuccess
 }
+
+testYarn2WithYarn2SkipPruningFalse() {
+  env_dir=$(mktmpdir)
+  echo "false" > $env_dir/YARN2_SKIP_PRUNING
+  compile "yarn-2" "$(mktmpdir)" $env_dir
+  assertCaptured "Running 'yarn install' with yarn.lock"
+  assertCaptured "Version 3.9.7" # tsc output
+  assertCaptured "Running 'yarn heroku prune'"
+  assertCaptured "debug-npm-4.3.2-f0148b6afe-5543570879.zip appears to be unused - removing"
+  assertCaptured "ms-npm-2.1.2-ec0c1512ff-9b65fb709b.zip appears to be unused - removing"
+  assertCapturedSuccess
+}
+
+testYarn2WithYarn2SkipPruningTrue() {
+  env_dir=$(mktmpdir)
+  echo "true" > $env_dir/YARN2_SKIP_PRUNING
+  compile "yarn-2" "$(mktmpdir)" $env_dir
+  assertCaptured "Running 'yarn install' with yarn.lock"
+  assertCaptured "Version 3.9.7" # tsc output
+  assertCaptured "Skipping because YARN2_SKIP_PRUNING is 'true'"
+  assertNotCaptured "Running 'yarn heroku prune'"
+  assertCapturedSuccess
+}
+
+testYarn2WithYarnProductionSetCapturesAndReportsError() {
+   env_dir=$(mktmpdir)
+   echo "false" > $env_dir/YARN_PRODUCTION
+   compile "yarn-2" "$(mktmpdir)" $env_dir
+   assertCaptured "Legacy Yarn 1.x configuration present"
+   assertCapturedError
+ }
 
 testYarn2WithNodeModules() {
   compile "yarn-2-with-node-modules"
@@ -697,7 +729,7 @@ testYarn2WithoutYarnCache() {
 
 testYarn2WithoutWorkspaceModule() {
   compile "yarn-2-without-workspace-plugin"
-  assertCaptured "Skipping because the Yarn workspace plugin is not present."
+  assertCaptured "Running 'yarn heroku prune'"
   assertCapturedSuccess
 }
 ###
@@ -827,7 +859,7 @@ testDangerousRangeGreaterThan() {
 
 testRangeWithSpace() {
   compile "range-with-space"
-  assertCaptured "Resolving node version >= 0.8.x"
+  assertCaptured "Resolving node version = 0.8.x"
   assertCaptured "Downloading and installing node"
   assertCapturedSuccess
 }
@@ -1278,15 +1310,10 @@ testBuildMetaData() {
   assertFileContains "save-cache-time=" $log_file
 
   # resolve-version tests
-
-  # tests have become flaky because of releases that aren't caught on time, going to disable since
-  # we know this still works.
-
-  # TODO: replace with a better test
-
-  # assertFileContains 'resolve-v1-node="10.23.2 https://s3.amazonaws.com/heroku-nodebin/node/release/linux-x64/node-v10.23.2-linux-x64.tar.gz"' $log_file
-  # assertFileContains 'resolve-v2-node="10.23.2 https://s3.amazonaws.com/heroku-nodebin/node/release/linux-x64/node-v10.23.2-linux-x64.tar.gz"' $log_file
-  # assertFileContains "resolve-is-equal-node=true" $log_file
+  cat $log_file
+  assertFileContainsMatch 'resolve-v1-node="10.[[:digit:]]+.[[:digit:]]+ https://heroku-nodebin.s3.us-east-1.amazonaws.com/node/release/linux-x64/node-v10.[[:digit:]]+.[[:digit:]]+-linux-x64.tar.gz"' $log_file
+  assertFileContainsMatch 'resolve-v2-node="10.[[:digit:]]+.[[:digit:]]+ https://heroku-nodebin.s3.us-east-1.amazonaws.com/node/release/linux-x64/node-v10.[[:digit:]]+.[[:digit:]]+-linux-x64.tar.gz"' $log_file
+  assertFileContains "resolve-is-equal-node=true" $log_file
 
   # erase the log file
   echo "" > $log_file
@@ -1301,8 +1328,8 @@ testBuildMetaData() {
   assertFileContains "node-build-success=true" $log_file
 
   # resolve-version tests
-  assertFileContains 'resolve-v1-yarn="1.22.10 https://s3.amazonaws.com/heroku-nodebin/yarn/release/yarn-v1.22.10.tar.gz"' $log_file
-  assertFileContains 'resolve-v2-yarn="1.22.10 https://s3.amazonaws.com/heroku-nodebin/yarn/release/yarn-v1.22.10.tar.gz"' $log_file
+  assertFileContainsMatch 'resolve-v1-yarn="1.[[:digit:]]+.[[:digit:]]+ https://heroku-nodebin.s3.us-east-1.amazonaws.com/yarn/release/yarn-v1.[[:digit:]]+.[[:digit:]]+.tar.gz"' $log_file
+  assertFileContainsMatch 'resolve-v2-yarn="1.[[:digit:]]+.[[:digit:]]+ https://heroku-nodebin.s3.us-east-1.amazonaws.com/yarn/release/yarn-v1.[[:digit:]]+.[[:digit:]]+.tar.gz"' $log_file
   assertFileContains "resolve-is-equal-yarn=true" $log_file
 }
 
@@ -1421,6 +1448,67 @@ testBinReportScriptsWithQuotes() {
 testBinReportYarn() {
   compile_and_report "yarn"
   assertCaptured "package_manager: \"yarn\""
+}
+
+testNpmCiCaching() {
+  cache_dir=$(mktmpdir)
+  env_dir=$(mktmpdir)
+  echo "http" > $env_dir/NPM_CONFIG_LOGLEVEL
+
+  compile "ci-caching" $cache_dir $env_dir
+  assertNotCaptured "Restoring cache"
+  assertCaptured "Caching build"
+  assertCaptured "- npm cache"
+  assertCaptured "npm http fetch GET"
+  assertCapturedSuccess
+
+  compile "ci-caching" $cache_dir $env_dir
+  assertCaptured "Restoring cache"
+  assertCaptured "Caching build"
+  assertCaptured "- npm cache"
+  assertNotCaptured "npm http fetch GET"
+  assertCapturedSuccess
+}
+
+testNpmCiCachingWhenUseNpmInstallIsTrue() {
+  cache_dir=$(mktmpdir)
+  env_dir=$(mktmpdir)
+  echo "true" > $env_dir/USE_NPM_INSTALL
+
+  compile "ci-caching" $cache_dir $env_dir
+  assertNotCaptured "Restoring cache"
+  assertCaptured "Caching build"
+  assertNotCaptured "- npm cache"
+  assertCaptured "- node_modules"
+  assertCapturedSuccess
+
+  compile "ci-caching" $cache_dir $env_dir
+  assertCaptured "Restoring cache"
+  assertCaptured "Caching build"
+  assertCaptured "- node_modules"
+  assertNotCaptured "- npm cache"
+  assertCapturedSuccess
+}
+
+testNpmCiCachingWhenUseNpmInstallIsFalse() {
+  cache_dir=$(mktmpdir)
+  env_dir=$(mktmpdir)
+  echo "http" > $env_dir/NPM_CONFIG_LOGLEVEL
+  echo "false" > $env_dir/USE_NPM_INSTALL
+
+  compile "ci-caching" $cache_dir $env_dir
+  assertNotCaptured "Restoring cache"
+  assertCaptured "Caching build"
+  assertCaptured "- npm cache"
+  assertCaptured "npm http fetch GET"
+  assertCapturedSuccess
+
+  compile "ci-caching" $cache_dir $env_dir
+  assertCaptured "Restoring cache"
+  assertCaptured "Caching build"
+  assertCaptured "- npm cache"
+  assertNotCaptured "npm http fetch GET"
+  assertCapturedSuccess
 }
 
 # Utils

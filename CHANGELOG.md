@@ -1,7 +1,63 @@
 # Node.js Buildpack Changelog
 
 ## main
+
+## v198 (2022-06-15)
+
+- Adjust curl retry and connection timeout handling ([#1017](https://github.com/heroku/heroku-buildpack-nodejs/pull/1017))
+- `jq` is no longer installed by the buildpack([#1016](https://github.com/heroku/heroku-buildpack-nodejs/pull/1016))
+- Switch away from deprecated path-based S3 URLs ([#1013](https://github.com/heroku/heroku-buildpack-nodejs/pull/1013))
+
+## v197 (2022-06-07)
+- Drop the `yarn-native-cache` feature flag ([#1004](https://github.com/heroku/heroku-buildpack-nodejs/pull/1004))
+- Fix for `npm ci` caching ([#1009](https://github.com/heroku/heroku-buildpack-nodejs/pull/1009))
+- Fix skip pruning behavior with Yarn 2 ([#1008](https://github.com/heroku/heroku-buildpack-nodejs/pull/1008))
+
+## v196 (2022-05-31)
+- Add metrics plugin for Node 17 and 18 ([#1002](https://github.com/heroku/heroku-buildpack-nodejs/pull/1002))
+- Add warning message for Node 18+ incompatibility with heroku-18 ([#1002](https://github.com/heroku/heroku-buildpack-nodejs/pull/1002))
+- Enable Yarn 2 `devDependency` pruning using a custom plugin for all customers ([#1001](https://github.com/heroku/heroku-buildpack-nodejs/pull/1001))
+- Test against Heroku-22 ([#1003](https://github.com/heroku/heroku-buildpack-nodejs/pull/1003))
+
+## v195 (2022-04-13)
+- Enable Yarn 2 `devDependency` pruning using a custom plugin for 20% of customers ([#999](https://github.com/heroku/heroku-buildpack-nodejs/pull/999))
+- Set xtrace mode in buildpack when BUILDPACK_XTRACE environment variable is set ([#925](https://github.com/heroku/heroku-buildpack-nodejs/pull/925))
+
+## v194 (2022-03-30)
+- Rollback to v192 due to an edge case with yarn 2 pruning that would cause all devDependencies to be installed
+
+## v193 (2022-03-28)
+- Added Yarn 1.22.18 to `inventory/yarn.toml` ([#992](https://github.com/heroku/heroku-buildpack-nodejs/pull/992))
+- Fix issue with pruning yarn 2 cache when using the workspaces plugin ([#990](https://github.com/heroku/heroku-buildpack-nodejs/pull/990))
+
+## v192 (2022-02-16)
+- Fix issue with nested yarn cache during cache restoration ([#987](https://github.com/heroku/heroku-buildpack-nodejs/pull/987))
+- Fix issue with nested yarn caches and cache growth ([#985](https://github.com/heroku/heroku-buildpack-nodejs/pull/985))
+
+## v191 (2022-02-14)
+- Improve support for yarn 2+ installs ([#978](https://github.com/heroku/heroku-buildpack-nodejs/pull/978))
+
+## v190 (2022-01-31)
+- Update default node version to 16.x ([#973](https://github.com/heroku/heroku-buildpack-nodejs/pull/973))
+- Add Yarn 1.22.1{2,3,4,5} to `inventory/yarn.toml` ([#947](https://github.com/heroku/heroku-buildpack-nodejs/pull/947))
+
+## v189 (2021-09-14)
+- Revert non-zero-install support from #888 ([#944](https://github.com/heroku/heroku-buildpack-nodejs/pull/944))
+
+## v188 (2021-09-10)
+- Update Node version inventory, includes 12.22.6, 14.17.6, 16.8.0, 16.7.0 and others ([#940](https://github.com/heroku/heroku-buildpack-nodejs/pull/940))
+- Support non-zero-install support for Yarn 2 ([#888](https://github.com/heroku/heroku-buildpack-nodejs/pull/888))
+
+## v187 (2021-09-02)
+- Upgrade heroku_hatchet to 7.3.4 to get CI green again ([#936](https://github.com/heroku/heroku-buildpack-nodejs/pull/936))
+- Fix typo in conflicting lockfile failure message ([#901](https://github.com/heroku/heroku-buildpack-nodejs/pull/901))
+- Use local packages with Yarn when present ([#913](https://github.com/heroku/heroku-buildpack-nodejs/pull/913))
+- Add support for running "npm ci" when "npm-shrinkwrap.json" is found on the project directory ([#938](https://github.com/heroku/heroku-buildpack-nodejs/pull/938))
+
+## v186 (2021-08-11)
 - Refactor $WEB_CONCURRENCY logic ([#931](https://github.com/heroku/heroku-buildpack-nodejs/pull/931))
+- Fix broken tests, update node and yarn inventory, update shunit2 ([#934](https://github.com/heroku/heroku-buildpack-nodejs/pull/934))
+- Fix NODE_BINARY_URL extraction prefix stripping logic ([#928](https://github.com/heroku/heroku-buildpack-nodejs/pull/928))
 
 ## v185 (2021-06-03)
 - Drop Heroku-16 from CI test matrix ([#920](https://github.com/heroku/heroku-buildpack-nodejs/pull/920))
