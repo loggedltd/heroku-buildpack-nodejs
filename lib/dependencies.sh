@@ -191,12 +191,9 @@ yarn_prune_devdependencies() {
       rm -rf "$cache_dir"
       if [ ! -z "$YARN2_FOCUS_WORKSPACE" ]; then
         echo "Skipping pruning because workspace is focused already"
-      else
-        echo "Running 'yarn workspaces focus --production'"
-        monitor "yarn-prune" yarn workspaces focus --all --production
-      fi
-
-      if [ "$YARN2_SKIP_PRUNING" == "true" ]; then
+        meta_set "skipped-prune" "true"
+        return 0
+      elif [ "$YARN2_SKIP_PRUNING" == "true" ]; then
         echo "Skipping because YARN2_SKIP_PRUNING is '$YARN2_SKIP_PRUNING'"
         meta_set "skipped-prune" "true"
         return 0
