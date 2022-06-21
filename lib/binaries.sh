@@ -64,7 +64,7 @@ install_yarn() {
     echo "Downloading and installing yarn ($number)"
   fi
 
-  code=$(curl "$url" -L --silent --fail --retry 5 --retry-max-time 15 -o /tmp/yarn.tar.gz --write-out "%{http_code}")
+  code=$(curl "$url" -L --silent --fail --retry 5 --retry-max-time 15 --retry-connrefused --connect-timeout 5 -o /tmp/yarn.tar.gz --write-out "%{http_code}")
 
   if [ "$code" != "200" ]; then
     echo "Unable to download yarn: $code" && false
@@ -79,6 +79,8 @@ install_yarn() {
   fi
   chmod +x "$dir"/bin/*
 
+  # Verify yarn works before capturing and ensure its stderr is inspectable later
+  yarn --version 2>&1 1>/dev/null
   if $YARN_2; then
     echo "Using yarn $(yarn --version)"
   else
@@ -87,12 +89,9 @@ install_yarn() {
 }
 
 install_nodejs() {
-  local version=${1:-14.x}
+  local version=${1:-16.x}
   local dir="${2:?}"
-  local code os cpu resolve_result
-
-  os=$(get_os)
-  cpu=$(get_cpu)
+  local code resolve_result
 
   if [[ -n "$NODE_BINARY_URL" ]]; then
     url="$NODE_BINARY_URL"
@@ -110,14 +109,13 @@ install_nodejs() {
     echo "Downloading and installing node $number..."
   fi
 
-  code=$(curl "$url" -L --silent --fail --retry 5 --retry-max-time 15 -o /tmp/node.tar.gz --write-out "%{http_code}")
+  code=$(curl "$url" -L --silent --fail --retry 5 --retry-max-time 15 --retry-connrefused --connect-timeout 5 -o /tmp/node.tar.gz --write-out "%{http_code}")
 
   if [ "$code" != "200" ]; then
     echo "Unable to download node: $code" && false
   fi
-  tar xzf /tmp/node.tar.gz -C /tmp
   rm -rf "${dir:?}"/*
-  mv /tmp/node-v"$number"-"$os"-"$cpu"/* "$dir"
+  tar xzf /tmp/node.tar.gz --strip-components 1 -C "$dir"
   chmod +x "$dir"/bin/*
 }
 
@@ -126,6 +124,8 @@ install_npm() {
   local version="$1"
   local dir="$2"
   local npm_lock="$3"
+  # Verify npm works before capturing and ensure its stderr is inspectable later
+  npm --version 2>&1 1>/dev/null
   npm_version="$(npm --version)"
 
   # If the user has not specified a version of npm, but has an npm lockfile
@@ -144,6 +144,8 @@ install_npm() {
     if ! npm install --unsafe-perm --quiet -g "npm@$version" 2>@1>/dev/null; then
       echo "Unable to install npm $version; does it exist?" && false
     fi
-    echo "npm $version installed"
+    # Verify npm works before capturing and ensure its stderr is inspectable later
+    npm --version 2>&1 1>/dev/null
+    echo "npm $(npm --version) installed"
   fi
 }
